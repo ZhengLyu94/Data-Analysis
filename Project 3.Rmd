@@ -1,0 +1,838 @@
+---
+title: "Project 3"
+author: "Zheng Lyu"
+date: "December 10, 2017"
+output: pdf_document
+---
+
+#Import data
+```{r}
+#select the shots made during 2007-08 season playoffs.
+data0 <- read.csv("C:/Users/Zheng/Desktop/6210Final pro/data.csv",header=T)
+data0 <- na.omit(data0)
+data0 <- data0[data0$season=="2007-08",]
+data0 <- data0[data0$playoffs==1,]
+mydata <- data0[,c(1,5,6,7,8,9,10,13,14,15,16,17,18,19)]
+library(data.table)
+setnames(mydata, old=c("action_type","shot_distance", "shot_type","shot_zone_area","shot_zone_basic","shot_zone_range","minutes_remaining","seconds_remaining","shot_made_flag"), new=c("at","sd","points","area","basic","range","min","sec","Y"))
+mydata <- mydata[mydata$at!="Alley Oop Dunk Shot" & mydata$at!="Driving Finger Roll Layup Shot" & mydata$at!="Driving Slam Dunk Shot" & mydata$at!="Fadeaway Bank shot" & mydata$at!="Floating Jump shot" & mydata$at!="Putback Dunk Shot" & mydata$at!="Reverse Layup Shot" & mydata$at!="Running Layup Shot" & mydata$at!="Tip Shot" & mydata$at!="Driving Dunk Shot" & mydata$at!="Driving Jump shot" & mydata$at!="Driving Reverse Layup Shot" & mydata$at!="Hook Shot" & mydata$at!="Putback Layup Shot" & mydata$at!="Reverse Slam Dunk Shot" & mydata$at!="Reverse Dunk Shot" & mydata$at!="Slam Dunk Shot" & mydata$at!="Turnaround Bank shot" & mydata$at!="Turnaround Fadeaway shot",]
+Y <- mydata[,10]
+mydata <- mydata[,-10]
+mydata <- cbind(Y,mydata)
+library(dummies)
+data <- dummy.data.frame(mydata, sep = ".")
+rownames(data)<-1:nrow(data)
+```
+
+#Exploratory data analysis
+#Plots showing relationships between variables.
+```{r}
+library(corrplot)
+corrplot(cor(data),method="number")
+```
+
+#Correlation matrix of variables and responses.
+```{r}
+colnames(data[1])
+cor(data)[,1]
+```
+#PCA
+```{r}
+fit <- princomp(data,cor=T) 
+summary(fit)
+fit$scores[1:10,]
+plot(fit, type="lines")
+loadings(fit)[,1:2]
+biplot(fit)
+```
+#cluster
+```{r}
+data2 <- scale(data)
+dist <- dist(data2, method="euclidean")
+complete <- hclust(dist, method="complete")
+plot(complete,main="Hierarchical Clustering with Complete Linkage")
+single <- hclust(dist, method="single")
+plot(single,main="Hierarchical Clustering with Single Linkage")
+#Since the dataset contains a lot observations, it is hard to see parttern from the cluster plots. However, we can see that the two different cluster linkage can make the cluster differs a lot.
+wss <- (nrow(data2)-1)*sum(apply(data2,2,var))
+for(i in 2:10) wss[i] <- sum(kmeans(data2,centers=i)$withinss)
+plot(1:10, wss, type="b", xlab="Number of Clusters", ylab="Within groups sum of squares")
+#According to the plot, we can see that the within group sum of squaers goes down when the number of clusters goes up. The "ideal" number of clusters may be 3, 5 or 7.
+library(cluster)
+fit1 <- kmeans(data,1)
+clusplot(data2,fit1$cluster,color=T,shade=T,label=2, lines=0, main="One Cluster Plot")
+fit2 <- kmeans(data,2)
+clusplot(data2,fit2$cluster,color=T,shade=T,label=2, lines=0, main="Two Cluster Plot")
+fit3 <- kmeans(data,3)
+clusplot(data2,fit3$cluster,color=T,shade=T,label=2, lines=0, main="Three Cluster Plot")
+fit4 <- kmeans(data,5)
+clusplot(data2,fit4$cluster,color=T,shade=T,label=2, lines=0, main="Five Cluster Plot")
+fit5 <- kmeans(data,7)
+clusplot(data2,fit5$cluster,color=T,shade=T,label=2, lines=0, main="Seven Cluster Plot")
+fit6 <- kmeans(data,10)
+clusplot(data2,fit6$cluster,color=T,shade=T,label=2, lines=0, main="Ten Cluster Plot")
+
+fit7 <- kmeans(data,6)
+clusplot(data2,fit7$cluster,color=T,shade=T,label=2, lines=0, main="Six Cluster Plot")
+```
+
+####DO NOT RUN #deviances with respect to each coordinate?????
+```{r}
+str(data)#36
+library(ggplot2)
+library(reshape)
+data_melt <- melt(data)
+#data_melt
+#ggplot(data_melt, aes(x=value)+geom_histogram()+facet_wrap(~variables, scales="free"))
+#ggplot(data_melt, aes(x=value,y=Y)+geom_point()+facet_wrap(~variables, scales="free"))
+par(mfrow=c(6,6))
+lapply(data,hist)
+par(mfrow=c(3,3))
+lapply(data[,12:19],hist)
+
+data_melt2 <- cbind(data_melt, Y=data$Y)
+ggplot(data_melt2,aes(x=value,y=Y))+geom_point()+facet_wrap(~variable,scales="free")
+
+library(car)
+lmdata <- lm(Y~.,data=data)
+lmdata <- glm(Y~.,data=data,family="binomial")
+plot(lmdata, which=4)#70,85,287
+plot(lmdata, which=5)#
+outlierTest(lmdata)
+data <- data[-c(70,85,287),]
+```
+
+
+#subset selection
+```{r}
+str(data)
+library(boot)
+#forward 
+glmdata <- glm(Y~.,data=data, family="binomial")
+#library(leaps)
+#fit.fwd <- regsubsets(Y~., data, nvmax=36,method="forward")
+library(MASS)
+lmNULL <- glm(Y~1,data=data, family="binomial")
+data_scope <- formula(glmdata)
+stepAIC(lmNULL, scope=data_scope, direction="forward", trace=F)
+
+stepmodel<-glm(Y~`at.Jump Shot` + `at.Layup Shot` + `at.Fadeaway Jump Shot` +  min + `area.Left Side(L)` + `at.Pullup Jump shot`, family = "binomial",   data = data) 
+glm_stepmodel<-glm(stepmodel,data = data)
+glm_stepmodel.cv=cv.glm(data,glm_stepmodel,K=10) 
+glm_stepmodel.cv$delta[1]#0.19865734
+#glm(formula = Y ~ `at.Jump Shot` + `at.Layup Shot` + `at.Fadeaway Jump Shot` +  min + `area.Left Side(L)` + `at.Pullup Jump shot`, family = "binomial",   data = data)
+
+#backward
+lmNULL <- glm(Y~1,data=data,family="binomial")
+NULL_scope <- formula(lmNULL)
+stepAIC(glmdata, scope=NULL_scope, direction="backward", trace=F)
+
+stepmodel<-glm(Y~`at.Fadeaway Jump Shot` + `at.Jump Shot` +  `at.Layup Shot` + min + period + sd + `points.2PT Field Goal` +   `area.Left Side(L)` + `basic.In The Paint (Non-RA)`, family = "binomial",  data = data) 
+#stepmodel<-glm(Y~`at.Driving Layup Shot`+`at.Dunk Shot` + `at.Fadeaway Jump Shot` + `at.Jump Shot` +  `at.Pullup Jump shot` +`at.Running Bank shot`+loc_x + min + period + sd + `points.2PT Field Goal` +   `area.Left Side(L)` +`area.Center(C)`+`area.Left Side Center(LC)`+ `basic.In The Paint (Non-RA)`, family = "binomial",  data = data)
+glm_stepmodel<-glm(stepmodel,data = data)
+glm_stepmodel.cv=cv.glm(data,glm_stepmodel,K=10) 
+glm_stepmodel.cv$delta[1]#0.20072546
+#glm(formula = Y ~ `at.Fadeaway Jump Shot` + `at.Jump Shot` +  `at.Layup Shot` + min + period + sd + `points.2PT Field Goal` +   `area.Left Side(L)` + `basic.In The Paint (Non-RA)`, family = "binomial",   data = data)
+
+#LASSO
+library(glmnet)
+lasso.cv <- cv.glmnet(x=data.matrix(data[,-1]), y= data.matrix(data[,1]),alpha=1, nfolds=10) 
+plot(lasso.cv)
+min(lasso.cv$cvm)#0.20838796
+```
+#no transformation needed, delete outlier
+```{r}
+library(ggplot2)
+library(reshape)
+#data <- data.frame(data)
+data_melt <- melt(data)
+fit<-glm(Y~`at.Jump Shot` + `at.Layup Shot` + `at.Fadeaway Jump Shot` +  min + `area.Left Side(L)` + `at.Pullup Jump shot`, family = "binomial",   data = data) 
+melt3 <- cbind(data_melt,resid=fit$residuals)
+ggplot(melt3,aes(x=value,y=resid))+geom_point()+geom_smooth(method="loess")+facet_wrap(~variable,scales="free")
+
+library(car)
+lmdata <- lm(Y~.,data=data)
+lmdata <- glm(Y~.,data=data,family="binomial")
+plot(lmdata, which=4)#70,85,287
+plot(lmdata, which=5)#
+outlierTest(lmdata)
+data <- data[-c(70,85,287),]
+```
+
+
+#GLM   CI????????????
+```{r}
+fit1 <- glm(Y~`at.Jump Shot`+ `at.Layup Shot` + `at.Fadeaway Jump Shot` +  min + `area.Left Side(L)` , family="binomial",  data = data) #, family = binomial(link="logit")
+summary(fit1)
+confint(fit1)
+exp(coef(fit1))
+coef(fit1)
+exp(confint(fit1))
+plot(fit1)
+library(boot)
+cost <- function(r, pi=0) mean(abs(r-pi)>0.5)
+cv.glm(data,fit1,K=10,cost=cost)$delta[1]#0.29169054
+library(ROCR)
+predict1 <- prediction(predictions=predict(fit1, data),labels=data$Y)
+performance(predict1,"auc")@y.values[[1]]#AUC:0.7477564
+pre.ROC <- performance(predict1,"tpr","fpr")
+plot(pre.ROC)
+#CI
+newdata <- cbind(data, predict(fit1, data,type="link",se=T))
+newdata <- within(newdata, {
+  PredictedProb <- plogis(fit)
+  LL <- plogis(fit-(1.96*se.fit))
+  UL <- plogis(fit+(1.96*se.fit))
+})
+head(newdata)
+colMeans(newdata)
+#(0.3455, 0.5461) 0.4422
+pred1 <- ifelse(predict(fit1,data)<0.5,0,1)
+pred <- c()
+for (i in 1:346){
+  pred[i] <- pred1[[i]]
+}
+pmean <- mean(pred)
+boots <- matrix(0,10000,1)
+for( i in 1:10000){
+  xsample <- sample(pred, size=20, replace=T)
+  boots[i]<- mean(xsample)
+}
+pmean+quantile(boots-pmean,c(0.025,0.975))#(0.05,0.4)
+
+library(boot)
+bs <- function(data,i){
+  d <- data[i,]
+  fit <- glm(Y~`at.Jump Shot` + `at.Layup Shot` + `at.Fadeaway Jump Shot` +  min + `area.Left Side(L)` , family = "binomial",   data = d) 
+  return(coef(fit))
+}
+bootResults <- boot(data=data,statistic=bs,stype="i",R=1000)
+boot.ci(bootResults, type="bca",index=6)
+
+
+plot(cooks.distance(fit1))
+library(car)
+crPlots(fit1)
+
+
+#interaction 2/3 points
+points <- c()
+for (i in 1:nrow(data)){
+  if (data$`points.2PT Field Goal`[i]==0){
+    points[i] <- 2
+  } else {
+    points[i] <- 1
+  }
+}
+mydata <- data[,-c(20,21)]
+mydata <- cbind(mydata, points)
+fit2 <- glm(Y~`at.Jump Shot` + `at.Layup Shot` + `at.Fadeaway Jump Shot` +  min*points + `area.Left Side(L)` , family = "binomial",   data = mydata) 
+summary(fit2)
+confint(fit2)
+exp(coef(fit2))
+library(boot)
+cost <- function(r, pi=0) mean(abs(r-pi)>0.5)
+cv.glm(mydata,fit2,K=10,cost=cost)$delta[1]#
+library(ROCR)
+predict2 <- prediction(predictions=predict(fit2, mydata),labels=mydata$Y)
+performance(predict2,"auc")@y.values[[1]]#AUC:0.7513
+pre.ROC <- performance(predict2,"tpr","fpr")
+plot(pre.ROC)
+bs <- function(mydata,i){
+  d <- mydata[i,]
+  fit <- glm(Y~`at.Jump Shot`+ `at.Pullup Jump shot` + `at.Layup Shot` + `at.Fadeaway Jump Shot` +  min + `area.Left Side(L)` , family = "binomial",   data = d) 
+  return(coef(fit))
+}
+bootResults <- boot(data=mydata,statistic=bs,stype="i",R=1000)
+boot.ci(bootResults, type="bca",index=1)#( 0.603,2.204 )  
+```
+#GLMsplines
+```{r}
+#splines
+library(gamclass)
+library(mgcv)
+mydata <- data[,c(1,4,6,7,8,16,24)]
+mydata <- na.omit(mydata)
+mydata <- data.frame(mydata)
+str(mydata)
+fit3 <- gam(Y~at.Fadeaway.Jump.Shot+s(min)+at.Jump.Shot+at.Layup.Shot+area.Left.Side.L., family = binomial(link="logit"),   data = mydata)
+fit3 <- gam(Y~mydata$at.Fadeaway.Jump.Shot+s(min)+mydata$at.Jump.Shot+mydata$at.Layup.Shot+mydata$area.Left.Side.L., family = "binomial",   data = mydata)
+summary(fit3)
+confint(fit3)
+exp(coef(fit3))
+predict(fit3,mydata)
+CVgam(formula(fit3),mydata,nfold=10)
+CVgam(formula=Y~at.Fadeaway.Jump.Shot+s(min)+at.Jump.Shot+at.Layup.Shot+area.Left.Side.L.,mydata,nfold=10)
+
+pred1 <- predict(fit3,mydata)
+pred <- c()
+for (i in 1:346){
+  pred[i] <- pred1[[i]]
+}
+predict3 <- prediction(predictions=pred,labels=mydata$Y)
+performance(predict3,"auc")@y.values[[1]]#AUC:0.7480274
+pre.ROC <- performance(predict3,"tpr","fpr")
+plot(pre.ROC)
+```
+
+#lasso/Ridge logistic regression 
+```{r}
+library(glmnet)
+mydata <- data[,c(1,4,6,7,8,16,24)]
+#mydata <- data.frame(mydata)
+str(mydata)
+x <- model.matrix(Y~.-1,data=mydata)
+y <- mydata$Y
+lasso.cv <- cv.glmnet(x=x,y=y, family="binomial",alpha=1,nfolds=10)
+plot(lasso.cv)
+min(lasso.cv$cvm)#1.162287
+lasso.cv$lambda.min#0.0009618
+fit.lasso <- glmnet(x=x,y=y,family="binomial",alpha=1,lambda=c(1,exp(-6.8)))
+fit.lasso$beta[,2]
+pred <- predict(fit.lasso, x,s=c(0.00096186))
+pred.model2.1 <- ifelse(pred > 0.5,1,0)
+c <- c()
+for (i in 1:346){
+  c[i] <- pred.model2.1[i]
+}
+c
+y
+summary(fit.lasso)
+##########
+cost <- function(r, pi=0) mean(abs(r-pi)>0.5)
+cv.glm(mydata,fit.lasso,cost)
+pred.model2 <- predict.glm(fit.lasso,mydata,type='response')
+pred.model2.1 <- ifelse(pred > 0.5,1,0)
+
+glm_net <- cv.glmnet(x, y, family="binomial", type.measure="class",alpha=1,nfolds=10)
+plot(glm_net)
+min(glm_net$cvm)#0.2890
+glm_net <- cv.glmnet(x, y, family="binomial", type.measure="auc",alpha=1,nfolds=10)
+plot(glm_net)
+max(glm_net$cvm)#0.7397
+
+library(ROCR)
+pred <- predict(fit.lasso, x,s=c(0.00096186))
+c <- c()
+for (i in 1:346){
+  c[i] <- pred[i]
+}
+c
+predict2 <- prediction(predictions=c,labels=y)
+performance(predict2,"auc")@y.values[[1]]#AUC:0.7477
+pre.ROC <- performance(predict2,"tpr","fpr")
+plot(pre.ROC)
+
+#Ridge
+ridge.cv <- cv.glmnet(x=x,y=y, family="binomial",alpha=0,nfolds=10)
+plot(ridge.cv)
+min(ridge.cv$cvm)#1.159038
+min(ridge.cv$lambda.min)#0.019326
+fit.ridge <- glmnet(x=x,y=y,family="binomial",alpha=0,lambda=c(1,exp(-4)))
+fit.ridge$beta[,2]
+glm_net <- cv.glmnet(x, y, family="binomial", type.measure="class",alpha=0,nfolds=10)
+plot(glm_net)
+min(glm_net$cvm)#0.2919
+glm_net <- cv.glmnet(x, y, family="binomial", type.measure="auc",alpha=0,nfolds=10)
+plot(glm_net)
+max(glm_net$cvm)#0.7345
+
+pred1 <- predict(fit.ridge, x,s=c(0.019326))
+pred.model2.1 <-pred1
+c <- c()
+for (i in 1:346){
+  c[i] <- pred.model2.1[i]
+}
+c
+predict2 <- prediction(predictions=c,labels=y)
+performance(predict2,"auc")@y.values[[1]]#AUC:0.7483
+pre.ROC <- performance(predict2,"tpr","fpr")
+plot(pre.ROC)
+```
+
+#cluster
+```{r}
+data2 <- scale(data)
+dist <- dist(data2, method="euclidean")
+complete <- hclust(dist, method="complete")
+plot(complete,main="Hierarchical Clustering with Complete Linkage")
+single <- hclust(dist, method="single")
+plot(single,main="Hierarchical Clustering with Single Linkage")
+#Since the dataset contains a lot observations, it is hard to see parttern from the cluster plots. However, we can see that the two different cluster linkage can make the cluster differs a lot.
+wss <- (nrow(data2)-1)*sum(apply(data2,2,var))
+for(i in 2:10) wss[i] <- sum(kmeans(data2,centers=i)$withinss)
+plot(1:10, wss, type="b", xlab="Number of Clusters", ylab="Within groups sum of squares")
+#According to the plot, we can see that the within group sum of squaers goes down when the number of clusters goes up. The "ideal" number of clusters may be 3, 5 or 7.
+library(cluster)
+fit1 <- kmeans(data,1)
+clusplot(data2,fit1$cluster,color=T,shade=T,label=2, lines=0, main="One Cluster Plot")
+fit2 <- kmeans(data,2)
+clusplot(data2,fit2$cluster,color=T,shade=T,label=2, lines=0, main="Two Cluster Plot")
+fit3 <- kmeans(data,3)
+clusplot(data2,fit3$cluster,color=T,shade=T,label=2, lines=0, main="Three Cluster Plot")
+
+data11 <- data[fit3$cluster==1,]
+data22 <- data[fit3$cluster==2,]
+data33 <- data[fit3$cluster==3,]
+```
+
+#Cluster svm poly
+```{r}
+mydata <- data11
+library(e1071)
+#data.svm1 <- svm(Y~`at.Jump Shot`+ `at.Pullup Jump shot` + `at.Layup Shot` + `at.Fadeaway Jump Shot` +  min + `area.Left Side(L)`, data=mydata, scale=T, method="C-classification", kernel="linear",CV=T)
+#0.7167,0.72254,0.71965
+data.svm1 <- svm(Y~., data=mydata, scale=T, method="C-classification", kernel="polynomial",cross=10)
+pred <- predict(data.svm1,mydata[,-c(1)])
+pre <- ifelse(pred<0.5,0,1)
+table(pre,data[,1])#0.283237
+pred
+c <- as.numeric(pred)
+cc <- c
+cc
+predict <- prediction(predictions=cc,labels=data[,1])
+performance(predict,"auc")@y.values[[1]]#AUC:0.7504
+pre.ROC <- performance(predict,"tpr","fpr")
+plot(pre.ROC)
+
+
+
+
+library(e1071)
+#1
+mydata <- data11
+mydata$Y <- factor(mydata$Y)
+data.svm1 <- svm(Y~., data=mydata, scale=T, method="C-classification",  kernel="polynomial",cross=10)
+pred <- predict(data.svm1,data11[,-c(1)])
+table(pred,data11[,1])#0.5567.97
+#2
+mydata <- data22
+mydata$Y <- factor(mydata$Y)
+data.svm2 <- svm(Y~., data=mydata, scale=T, method="C-classification",  kernel="polynomial",CV=T)
+pred <- predict(data.svm2,data22[,-c(1)])
+table(pred,data22[,1])#100.57
+#3
+mydata <- data33
+mydata$Y <- factor(mydata$Y)
+data.svm3 <- svm(Y~., data=mydata, scale=T, method="C-classification",  kernel="polynomial",CV=T)
+pred <- predict(data.svm3,data33[,-c(1)])
+table(pred,data33[,1])#.7552.192
+#ROC
+c <- as.numeric(pred)
+cc <- ifelse(c<2,0,1)
+predict <- prediction(predictions=cc,labels=mydata[,1])
+performance(predict,"auc")@y.values[[1]]#AUC
+pre.ROC <- performance(predict,"tpr","fpr")
+plot(pre.ROC)
+```
+
+#CLUSTER glm
+```{r}
+#1.
+fit11 <- glm(Y~`at.Jump Shot`+ `at.Pullup Jump shot` + `at.Layup Shot` + `at.Fadeaway Jump Shot` +  min + `area.Left Side(L)` , family = "binomial",   data = data11)
+summary(fit11)
+confint(fit11)
+exp(coef(fit11))
+library(boot)
+cost <- function(r, pi=0) mean(abs(r-pi)>0.5)
+cv.glm(data11,fit11,K=10,cost=cost)$delta[1]#0.22
+library(ROCR)
+predict1 <- prediction(predictions=predict(fit11, data11),labels=data11$Y)
+performance(predict1,"auc")@y.values[[1]]#AUC:0.8251971
+pre.ROC <- performance(predict1,"tpr","fpr")
+plot(pre.ROC)
+#2
+fit22 <- glm(Y~`at.Jump Shot`+ `at.Pullup Jump shot` + `at.Layup Shot` + `at.Fadeaway Jump Shot` +  min + `area.Left Side(L)` , family = "binomial",   data = data22)
+summary(fit22)
+confint(fit22)
+exp(coef(fit22))
+library(boot)
+cost <- function(r, pi=0) mean(abs(r-pi)>0.5)
+cv.glm(data22,fit22,K=10,cost=cost)$delta[1]#0.35
+library(ROCR)
+predict2 <- prediction(predictions=predict(fit22, data22),labels=data22$Y)
+performance(predict2,"auc")@y.values[[1]]#AUC:0.6217731
+pre.ROC <- performance(predict2,"tpr","fpr")
+plot(pre.ROC)
+#3
+fit33 <- glm(Y~`at.Jump Shot`+ `at.Pullup Jump shot` + `at.Layup Shot` + `at.Fadeaway Jump Shot` +  min + `area.Left Side(L)` , family = "binomial",   data = data33)
+summary(fit33)
+confint(fit33)
+exp(coef(fit33))
+library(boot)
+cost <- function(r, pi=0) mean(abs(r-pi)>0.5)
+cv.glm(data33,fit33,K=10,cost=cost)$delta[1]#0.3109091
+library(ROCR)
+predict3 <- prediction(predictions=predict(fit33, data33),labels=data33$Y)
+performance(predict3,"auc")@y.values[[1]]#AUC:0.744152
+pre.ROC <- performance(predict3,"tpr","fpr")
+plot(pre.ROC)
+
+```
+
+#LDA
+```{r}
+str(data)
+mydata <- data[,c(1,12:16,18,19)]
+library(MASS)
+lda.fit <- lda(Y~.,data=mydata)
+lda.class <- predict(lda.fit)$class
+table(mydata$Y, lda.class)
+#lda.fit <- lda(Y~`at.Jump Shot`+ `at.Layup Shot` + `at.Fadeaway Jump Shot` +  min+ `area.Left Side(L)`,data=data, CV=T)
+#table(data$Y,lda.fit$class)#0.2803
+
+pre <- predict(lda.fit,mydata)
+table(mydata$Y,pre$class)
+pred <- prediction(pre$posterior[,2], mydata$Y)
+performance(pred,"auc")@y.values[[1]]#0.6255
+pre.ROC <- performance(pred,"tpr","fpr")
+plot(pre.ROC)
+perf <- performance(pred,"tpr","fpr")
+plot(perf,colorize=TRUE)
+```
+#QDA
+```{r}
+mydata
+#qda.fit <- qda(Y~ `at.Jump Shot`+ `at.Layup Shot` + `at.Fadeaway Jump Shot` +  min+ `area.Left Side(L)`, data=data, CV=T)
+qda.fit <- qda(Y~mydata$loc_x+mydata$loc_y+mydata$min+mydata$sec+mydata$sd,data=mydata)
+qda.class <- predict(qda.fit)$class
+table(mydata$Y, qda.class)#0.4133
+pre <- predict(qda.fit,mydata)
+pred <- prediction(pre$posterior[,2], mydata$Y)
+performance(pred,"auc")@y.values[[1]]#0.6475
+pre.ROC <- performance(pred,"tpr","fpr")
+plot(pre.ROC)
+```
+#SVM
+```{r}
+#mydata <- data[,c(1,12:16,18,19)]
+#mydata$Y <- factor(mydata$Y)
+mydata <- data
+library(e1071)
+#data.svm1 <- svm(Y~`at.Jump Shot`+ `at.Pullup Jump shot` + `at.Layup Shot` + `at.Fadeaway Jump Shot` +  min + `area.Left Side(L)`, data=mydata, scale=T, method="C-classification", kernel="linear",CV=T)
+#0.7167,0.72254,0.71965
+
+str(data11)
+data.svm1 <- svm(Y~., data=mydata, scale=T, method="C-classification", kernel="polynomial",cross=10)
+pred <- predict(data.svm1,mydata[,-c(1)])
+pre <- ifelse(pred<0.5,0,1)
+table(pre,data[,1])#0.283237
+pred
+c <- as.numeric(pred)
+cc <- c
+cc
+predict <- prediction(predictions=cc,labels=data[,1])
+performance(predict,"auc")@y.values[[1]]#AUC:0.7504
+pre.ROC <- performance(predict,"tpr","fpr")
+plot(pre.ROC)
+
+
+data.svm2 <- svm(Y~., data=mydata, scale=T, method="C-classification",  kernel="polynomial",cross=10)
+pred <- predict(data.svm2,data[,-c(1)])
+table(pred,data[,1])#0.25434
+c <- as.numeric(pred)
+cc <- c
+predict <- prediction(predictions=cc,labels=data[,1])
+performance(predict,"auc")@y.values[[1]]#AUC:0.8924
+pre.ROC <- performance(predict,"tpr","fpr")
+plot(pre.ROC)
+
+
+data.svm3 <- svm(Y~., data=mydata, scale=T, method="C-classification", kernel="radial",CV=T)
+pred <- predict(data.svm3,data[,-c(1)])
+table(pred,data[,1])#0.2688
+c <- as.numeric(pred)
+cc <- c
+predict <- prediction(predictions=cc,labels=data[,1])
+performance(predict,"auc")@y.values[[1]]#AUC:0.8606
+pre.ROC <- performance(predict,"tpr","fpr")
+plot(pre.ROC)
+```
+
+#Additional methods
+#decision tree
+```{r}
+library(metaviz)
+library(rpart)
+#cv
+n <- nrow(data)
+K <- 10
+taille <- n%/%K
+set.seed(5)
+alea <- runif(n)
+rang <- rank(alea)
+bloc <- (rang-1)%/%taille+1
+bloc <- as.factor(bloc)
+print(summary(bloc))
+all.err <- numeric(0)
+for (K in 1:K){
+  arbre <- rpart(Y ~.,data=data[bloc!=K,],method="class")
+  pred <- predict(arbre, newdata=data[bloc==K,], type="class")
+  mc <- table(data$Y[bloc==K], pred)
+  err <- 1.0 - (mc[1,1]+mc[2,2])/sum(mc)
+  all.err <- rbind(all.err,err)
+}
+print(all.err)
+err.cv <- mean(all.err)
+print(err.cv)#0.2647059,0.3529
+#use selected variables, cverr is 0.3029
+arbre <- rpart(Y ~.,data=data,method="class")
+pred1 <- predict(arbre, newdata=data, type="class")
+pred1 <- as.numeric(pred1)
+pred.model2.1 <- ifelse(pred1 <2,0,1)
+c <- c()
+for (i in 1:346){
+  c[i] <- pred.model2.1[i]
+}
+table(c,data$Y)
+predict2 <- prediction(predictions=c,labels=data$Y)
+performance(predict2,"auc")@y.values[[1]]#AUC:0.7723
+pre.ROC <- performance(predict2,"tpr","fpr")
+plot(pre.ROC)
+
+
+############################USELESS
+#set.seed()
+#a <- random(240)
+set.seed(1)
+a <- sample(346, 240, replace = FALSE, prob = NULL)
+train <- data[a,]
+test <- data[-a,]
+#train <- data[1:240,]
+#test <- data[241:346,]
+library(rpart)
+library(rattle)
+library(rpart.plot)
+library(RColorBrewer)
+tree <- rpart(data$Y ~`at.Jump Shot` + `at.Layup Shot` + `at.Fadeaway Jump Shot` +  min + `area.Left Side(L)` + `at.Pullup Jump shot`,data = data, method ="class")
+plot(tree)
+text(tree)
+fancyRpartPlot(tree)
+tree2 <- rpart(data$Y ~.,data = data,method ="class")
+plot(tree2)
+text(tree2)
+fancyRpartPlot(tree2)
+
+pred <- predict(ptree,newdata=data,type="class")
+mc <- table(data$Y,pred)
+print(mc)#0.27167,ptree0.28902
+
+solution <- data.frame(PassengerId = test$PassengerId, Survived = my_prediction)
+
+printcp(tree)
+plotcp(tree)
+ptree<- prune(tree, cp=tree$cptable[which.min(tree$cptable[,"xerror"]),"CP"])
+fancyRpartPlot(ptree, uniform=TRUE, main="Pruned Classification Tree")
+```
+
+#Random forest
+```{r}
+library(randomForest)
+mydata <- data.frame(data)
+n <- nrow(mydata)
+K <- 10
+taille <- n%/%K
+set.seed(5)
+alea <- runif(n)
+rang <- rank(alea)
+bloc <- (rang-1)%/%taille+1
+bloc <- as.factor(bloc)
+print(summary(bloc))
+all.err <- numeric(0)
+for (K in 1:K){
+  arbre <- randomForest(as.factor(Y) ~ .,data=mydata[bloc!=K,],ntree=100,nodesize=10)
+  pred <- predict(arbre, newdata=mydata[bloc==K,],ntree=100,nodesize=10)
+  mc <- table(mydata$Y[bloc==K], pred)
+  err <- 1.0 - (mc[1,1]+mc[2,2])/sum(mc)
+  all.err <- rbind(all.err,err)
+}
+print(all.err)
+err.cv <- mean(all.err)
+print(err.cv)#0.3353
+
+
+arbre <- randomForest(as.factor(Y) ~ .,data=mydata,ntree=100,nodesize=10)
+pred1 <- predict(arbre, newdata=mydata,ntree=100,nodesize=10)
+pred1 <- as.numeric(pred1)
+pred.model2.1 <- ifelse(pred1 <2,0,1)
+c <- c()
+for (i in 1:346){
+  c[i] <- pred.model2.1[i]
+}
+table(c,mydata$Y)
+predict2 <- prediction(predictions=c,labels=mydata$Y)
+performance(predict2,"auc")@y.values[[1]]#AUC:0.8420
+pre.ROC <- performance(predict2,"tpr","fpr")
+plot(pre.ROC)
+```
+
+#neural network
+```{r}
+library(ISLR)
+nrow(data)
+maxs <-  apply(data, 2, max)
+mins <- apply(data, 2, min)
+scaled.data <- as.data.frame(scale(data,center = mins, scale = maxs - mins))
+mydata <- cbind(data$Y,scaled.data)
+mydata <- as.data.frame(mydata)
+
+library(caTools)
+set.seed(1)
+split  <- sample.split(mydata$`data$Y`, SplitRatio=0.7)
+train = subset(mydata, split == TRUE)
+test = subset(mydata, split == FALSE)
+attach(scaled.data)
+feats <- names(scaled.data)
+feats
+# Concatenate strings
+f <- paste(feats,collapse=' + ')
+f <- paste('Y ~',f)
+f <- Y ~`at.Jump Shot` + `at.Layup Shot` + `at.Fadeaway Jump Shot` +  min + `area.Left Side(L)` + `at.Pullup Jump shot`
+# Convert to formula
+f <- as.formula(f)
+f
+library(neuralnet)
+attach(mydata)
+nn <- neuralnet(Y ~train$`at.Jump Shot` + train$`at.Layup Shot` + train$`at.Fadeaway Jump Shot` +  train$min + train$`area.Left Side(L)` + train$`at.Pullup Jump shot`,train,hidden=c(10,10,10),linear.output=FALSE)
+predicted.nn.values <- compute(nn,test[2:18])
+
+# Check out net.result
+print(head(predicted.nn.values$net.result))
+predicted.nn.values$net.result <- sapply(predicted.nn.values$net.result,round,digits=0)
+table(test$Private,predicted.nn.values$net.result)
+
+
+
+
+
+set.seed(450)
+cv.error <- NULL
+k <- 10
+
+library(plyr) 
+pbar <- create_progress_bar('text')
+pbar$init(k)
+
+for(i in 1:k){
+    index <- sample(1:nrow(data),round(0.9*nrow(data)))
+    train.cv <- scaled.data[index,]
+    test.cv <- scaled.data[-index,]
+    
+    nn <- neuralnet(f,data=train.cv,hidden=c(5,2),linear.output=T)
+    
+    pr.nn <- compute(nn,test.cv[,1:36])
+    pr.nn <- pr.nn$net.result*(max(data$Y)-min(data$Y))+min(data$Y)
+    
+    test.cv.r <- (test.cv$Y)*(max(data$Y)-min(data$Y))+min(data$Y)
+    
+    cv.error[i] <- sum((test.cv.r - pr.nn)^2)/nrow(test.cv)
+    
+    pbar$step()
+}
+mean(cv.error)
+```
+
+```{r}
+index <- sample(1:nrow(data),round(0.75*nrow(data)))
+train <- data[index,]
+test <- data[-index,]
+lm.fit <- glm(Y~., data=train)
+summary(lm.fit)
+pr.lm <- predict(lm.fit,test)
+MSE.lm <- sum((pr.lm - test$medv)^2)/nrow(test)
+maxs <- apply(data, 2, max) 
+mins <- apply(data, 2, min)
+scaled <- as.data.frame(scale(data, center = mins, scale = maxs - mins))
+train_ <- scaled[index,]
+test_ <- scaled[-index,]
+library(neuralnet)
+n <- names(train_)
+f <- as.formula(paste("Y ~", paste(n[!n %in% "Y"], collapse = " + ")))
+nn <- neuralnet(f,data=train_,hidden=c(5,3),linear.output=T)
+plot(nn)
+
+
+
+
+pr.nn <- compute(nn,test_[,1:36])
+pr.nn_ <- pr.nn$net.result*(max(data$medv)-min(data$medv))+min(data$medv)
+test.r <- (test_$medv)*(max(data$medv)-min(data$medv))+min(data$medv)
+MSE.nn <- sum((test.r - pr.nn_)^2)/nrow(test_)
+#we then compare the two MSEs
+print(paste(MSE.lm,MSE.nn))
+par(mfrow=c(1,2))
+
+plot(test$medv,pr.nn_,col='red',main='Real vs predicted NN',pch=18,cex=0.7)
+abline(0,1,lwd=2)
+legend('bottomright',legend='NN',pch=18,col='red', bty='n')
+
+plot(test$medv,pr.lm,col='blue',main='Real vs predicted lm',pch=18, cex=0.7)
+abline(0,1,lwd=2)
+legend('bottomright',legend='LM',pch=18,col='blue', bty='n', cex=.95)
+plot(test$medv,pr.nn_,col='red',main='Real vs predicted NN',pch=18,cex=0.7)
+points(test$medv,pr.lm,col='blue',pch=18,cex=0.7)
+abline(0,1,lwd=2)
+legend('bottomright',legend=c('NN','LM'),pch=18,col=c('red','blue'))
+
+
+library(boot)
+set.seed(200)
+lm.fit <- glm(medv~.,data=data)
+cv.glm(data,lm.fit,K=10)$delta[1]
+
+set.seed(450)
+cv.error <- NULL
+k <- 10
+
+library(plyr) 
+pbar <- create_progress_bar('text')
+pbar$init(k)
+
+for(i in 1:k){
+    index <- sample(1:nrow(data),round(0.9*nrow(data)))
+    train.cv <- scaled[index,]
+    test.cv <- scaled[-index,]
+    
+    nn <- neuralnet(f,data=train.cv,hidden=c(5,2),linear.output=T)
+    
+    pr.nn <- compute(nn,test.cv[,1:13])
+    pr.nn <- pr.nn$net.result*(max(data$medv)-min(data$medv))+min(data$medv)
+    
+    test.cv.r <- (test.cv$medv)*(max(data$medv)-min(data$medv))+min(data$medv)
+    
+    cv.error[i] <- sum((test.cv.r - pr.nn)^2)/nrow(test.cv)
+    
+    pbar$step()
+}
+mean(cv.error)
+```
+
+#naive Bayes
+```{r}
+library(e1071)
+library(mlbench)
+mydata <- data
+y <- as.factor(data$Y)
+mydata <- cbind(mydata[,-1],y)
+model <- naiveBayes(y ~ ., data = mydata)
+summary(model)
+pred <- predict(model,newdata=data,type="class")
+pred
+conf_matrix <- table(pred, data$Y)
+
+pred1 <- as.numeric(pred)
+c <- c()
+for (i in 1:346){
+  c[i] <- pred1[i]
+}
+predict2 <- prediction(predictions=c,labels=data$Y)
+performance(predict2,"auc")@y.values[[1]]#AUC:0.6284
+pre.ROC <- performance(predict2,"tpr","fpr")
+plot(pre.ROC)
+
+library(caret)
+fit <- train(mydata[,-36],mydata$y, method="nb", trControl=trainControl(method="cv",number=10))
+fit#0.6184
+```
+
+

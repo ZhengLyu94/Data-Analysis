@@ -1,0 +1,91 @@
+---
+title: "Project 2 Second Part"
+author: "Zheng Lyu"
+date: "December 2, 2017"
+output:
+  word_document: default
+  pdf_document: default
+---
+
+#Import data
+```{r}
+#select the shots made during 2007-08 season playoffs.
+data0 <- read.csv("C:/Users/Zheng/Desktop/6210Final pro/data.csv",header=T)
+data0 <- na.omit(data0)
+data0 <- data0[data0$season=="2007-08",]
+data0 <- data0[data0$playoffs==1,]
+mydata <- data0[,c(2,5,6,7,8,9,10,13,14,15,16,17,18,19)]
+library(data.table)
+setnames(mydata, old=c("combined_shot_type","shot_distance", "shot_type","shot_zone_area","shot_zone_basic","shot_zone_range","minutes_remaining","seconds_remaining","shot_made_flag"), new=c("st","sd","points","area","basic","range","min","sec","result"))
+attach(mydata)
+library(dummies)
+data <- dummy.data.frame(mydata, sep = ".")
+rownames(data)<-1:nrow(data)
+```
+
+#2. Exploratory data analysis
+#2.1 Plots showing relationships between variables.
+```{r}
+library(corrplot)
+corrplot(cor(data))
+```
+
+#2.2 Correlation matrix of variables and responses.
+```{r}
+colnames(data[15])
+cor(data)[,15]
+```
+
+#Analysis done in HW5
+#PCA
+```{r}
+fit <- princomp(data,cor=T)
+#loadings(fit)
+summary(fit)
+fit$scores[1:10,]
+plot(fit, type="lines")
+loadings(fit)[,1:2]
+biplot(fit)
+```
+
+#From the plot, it seems that the first 2 PCs are "significant" because they can explain the variance in the dataset much higher than the other PCs and these 2 PCs can explain over 98% of variance in the dataset.
+
+#Clustering
+```{r}
+data2 <- scale(data)
+dist <- dist(data2, method="euclidean")
+complete <- hclust(dist, method="complete")
+plot(complete,main="Hierarchical Clustering with Complete Linkage")
+single <- hclust(dist, method="single")
+plot(single,main="Hierarchical Clustering with Single Linkage")
+#Since the dataset contains a lot observations, it is hard to see parttern from the cluster plots. However, we can see that the two different cluster linkage can make the cluster differs a lot.
+wss <- (nrow(data2)-1)*sum(apply(data2,2,var))
+for(i in 2:10) wss[i] <- sum(kmeans(data2,centers=i)$withinss)
+plot(1:10, wss, type="b", xlab="Number of Clusters", ylab="Within groups sum of squares")
+#According to the plot, we can see that the within group sum of squaers goes down when the number of clusters goes up. The "ideal" number of clusters may be 3, 5 or 7.
+library(cluster)
+fit1 <- kmeans(data,1)
+clusplot(data2,fit1$cluster,color=T,shade=T,label=2, lines=0, main="One Cluster Plot")
+fit2 <- kmeans(data,2)
+clusplot(data2,fit2$cluster,color=T,shade=T,label=2, lines=0, main="Two Cluster Plot")
+fit3 <- kmeans(data,3)
+clusplot(data2,fit3$cluster,color=T,shade=T,label=2, lines=0, main="Three Cluster Plot")
+fit4 <- kmeans(data,5)
+clusplot(data2,fit4$cluster,color=T,shade=T,label=2, lines=0, main="Five Cluster Plot")
+fit5 <- kmeans(data,7)
+clusplot(data2,fit5$cluster,color=T,shade=T,label=2, lines=0, main="Seven Cluster Plot")
+fit6 <- kmeans(data,10)
+clusplot(data2,fit6$cluster,color=T,shade=T,label=2, lines=0, main="Ten Cluster Plot")
+
+fit7 <- kmeans(data,6)
+clusplot(data2,fit7$cluster,color=T,shade=T,label=2, lines=0, main="Six Cluster Plot")
+```
+
+#Write a short, one page analysis based on these graphics. Include any insights you have gained through this analysis, as well as how you expect to move forward with your project.
+
+#Correlation.From the correlation plot, we can see that there is no high correlation between the shot result and the independent variables. However, there are many variables that has relatively high correlations with each other. This situation is caused by converting categrecal variables into dummy variables. From the correlation matrix of variables and response, it shows that the shot result is negatively correlated with st.Jump Shot, which is very surprising since Kobe use Jump shot much more than other shot types, but it turns out that Jump shot does not work efficiently. The result has a negatively correlation with shot distance, which means the closer to the rim, the higher probability of making a shot. This also correspond to the correlation of result and 2 point shot and 3 point shot, which are 0.21 and -0.21 respectively. The variable "range" also explains the situation pretty well since the correlation between result and range less than 16 feet is positive and larger than 16ft is negative. The result also has positive correlation between area.Center and basic.Restricted Area.
+#From the PCA plot, it seems that the first 2 PCs are "significant" because they can explain the variance in the dataset much higher than the other PCs. However, they can only ecxplain 40% variance of the dataset which means the dataset is not very suitable for the PCA and since the number of variables is not very large, it is not necessary to reduce the dimension. Then  hierarchical clustering with complete linkage and hierarchical clustering with single linkage are conducted, and from the two clustering plot, there are several points that differs from others a lot because they were clustered in the very end. This may mean that these points can be outliers or influential points. However, since the dataset contains many observations, it is hard to see certain parttern from the cluster plots, but we can see that the two different cluster linkage can make the cluster differs a lot. From the within groups sum of squares plot, we can see that the within group sum of squaers goes down when the number of clusters goes up. The "ideal" number of clusters is 6. There are some parttern in the plot shows the data are more densed, but the clustering result it not satifying since many clusters shown in the right side of the plot contains too many same points, which does not make sense.
+
+#From the above results, it can be seen that some variables have similar meaning and effect on the result, so in the next step study, maybe only part of the variables will be used to predict result. Logistic Ridge/LASSO Regression, and cross validation can be used to build the model. Also, some observations need to be paid more attention on, Cook's distance can be used to check these points.
+
+

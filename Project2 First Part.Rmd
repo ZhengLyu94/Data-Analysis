@@ -1,0 +1,49 @@
+---
+title: "Project 2"
+author: "Zheng Lyu"
+date: "November 26, 2017"
+output:
+  word_document: default
+  pdf_document: default
+---
+#1.1 Get package and run it on the first 13 columns(except medv) of Boston dataset.
+```{r}
+library(tsne)
+library(MASS)
+str(Boston)
+data("Boston")
+Boston.tSNE <- tsne(Boston[,-14], k=2, max_iter=500, epoch=50)
+```
+
+#1.2 Plot t-SNE output
+```{r}
+ plot(Boston.tSNE,pch=Boston$medv/5)
+```
+#1.3 K-means with 5 clusters on the t-SNE output and add a variable. Remove clusters with less than 10 datapoints.
+```{r}
+c_tSNE <- kmeans(x=Boston.tSNE,center=5,nstart = 20)
+Boston[,15] <- c_tSNE$cluster
+colnames(Boston)[15] <- "cluster"
+xtabs( ~ cluster, data = Boston)
+```
+
+#1.4 Fit linear regression, cluster specific
+```{r}
+Bostoncluster <- glm(medv ~ (nox+rm+age+dis+lstat-1)*factor(cluster),data=Boston)
+summary(Bostoncluster)
+```
+
+#1.5 Linear regression except "cluster"
+```{r}
+Bostonlm <- glm(medv ~ .-cluster-1, data=Boston)
+summary(Bostonlm)
+```
+
+#1.6 Compare both of the model using LOOCV
+```{r}
+library(boot)
+cv.glm(data=Boston,glmfit=Bostoncluster)$delta[1]
+cv.glm(data=Boston,glmfit=Bostonlm)$delta[1]
+```
+
+#The above results show that the linear regression with cluster specific variables has smaller cross validation error than the linear regreesion using variables except "cluster". This means the linear regression with cluster is better.

@@ -1,0 +1,235 @@
+---
+title: "Project 1"
+author: "Zheng Lyu"
+date: "October 18, 2017"
+output:
+  pdf_document: default
+  html_document: default
+  word_document: default
+---
+#Data Exploration
+```{r}
+X <- read.table("D:/GWU-STAT/6210 Data Analysis/Project1/X.txt")
+Y <- read.table("D:/GWU-STAT/6210 Data Analysis/Project1/Y.txt")
+data <- cbind(X,Y)
+names(data)[17] <- "Y"
+str(data)
+```
+#We can see that there are 250 observations and 17 variables in the dataset. In oder to get a sense of the data, we look at the distributions of each variable.
+```{r}
+library(ggplot2)
+library(reshape)
+data_melt <- melt(data)
+ggplot(data_melt,aes(x=value))+geom_density()+facet_wrap(~variable,scales="free")
+ggplot(data_melt,aes(x=value))+geom_histogram()+facet_wrap(~variable,scale="free")
+
+```
+#In order to analyze bivariate relationships, we can check correlations.
+```{r}
+library(corrplot)
+corrplot(cor(data), method="number")
+```
+#We can see that V4 and V5 has high correaltion 0.88. V16 has moderate correlation (0.37) with Y and correlation between V6 and Y is 0.21.
+#Since we are interested in predicting Y, plots of bivariate graphs for each variable with the response Y are given.
+```{r}
+data_melt2 <- cbind(data_melt, Y=data$Y)
+ggplot(data_melt2,aes(x=value,y=Y))+geom_point()+facet_wrap(~variable,scales="free")
+```
+
+#Identify and Remove the Outliers
+```{r}
+str(data)
+library(car)
+data$V15<-factor(data$V15) 
+data$V16<-factor(data$V16)
+lmdata=lm(Y~.,data=data) 
+plot(lmdata,which=4)
+plot(lmdata,which=5)
+outlierTest(lmdata)
+data <- data[-c(46,52,121,145),]
+dim(data)
+lmdata <- lm(Y~., data=data)
+```
+#From the plots and test, suspected outliers are 46, 52, 121, 145. We need to delete them.
+
+#3.Select Variables
+#Best subset selection
+```{r}
+library(leaps)
+library(boot)
+regfit_data<-regsubsets(Y~.,data,nvmax=16) 
+summary(regfit_data)
+regfit_summary<-summary(regfit_data)
+CVmse<-rep(0,16)
+for(i in 1:16){   
+  tempCols<-which(regfit_summary$which[i,-1]==TRUE)   
+  tempCols<-c(tempCols,17)   
+  tempCols<-as.numeric(tempCols)   
+  tempGLM<-glm(Y~.,data = data[,tempCols])
+  tempCV<-cv.glm(tempGLM,data=data[,tempCols],K=10)   
+  CVmse[i]<-tempCV$delta[1] 
+} 
+plot(CVmse)
+which.min(CVmse)
+min(CVmse)
+coef(regfit_data,5)
+```
+#So the lowest mse chosen by subset selection is achieved by the 5th model, which includes variablesV3,V6,V10,V14,V16. 
+
+#Forward Stepwise Selection
+```{r}
+library(MASS)
+lmNULL <- lm(Y~1,data=data)
+data_scope <- formula(lmdata)
+stepAIC(lmNULL, scope=data_scope, direction = "forward", trace=F)
+```
+#Backward Stepwise Selection
+```{r}
+library(MASS)
+lmNULL <- lm(Y~1,data=data)
+NULL_scope <- formula(lmNULL)
+stepAIC(lmdata, scope=NULL_scope, direction = "backward", trace=F)
+```
+
+```{r}
+stepmodel<-lm(Y~V16+V10+V14+V6+V3,data=data) 
+glm_stepmodel<-glm(stepmodel,data = data)
+glm_stepmodel.cv=cv.glm(data,glm_stepmodel,K=10) 
+glm_stepmodel.cv$delta[2]
+```
+#The lowest cross validation mse chosen by stepwise selection includes variables V3,V6,V10,V14,V16, both forward stepwise and backward stepwise have the same result.
+
+#Ridge Regression
+```{r}
+library(glmnet)
+ridge.cv <- cv.glmnet(x=data.matrix(data[,-17]), y= data.matrix(data[,17]),alpha=0, nfolds=10)
+plot(ridge.cv)
+min(ridge.cv$cvm)
+```
+
+#LASSO 
+```{r}
+lasso.cv <- cv.glmnet(x=data.matrix(data[,-17]), y= data.matrix(data[,17]),alpha=1, nfolds=10)
+plot(lasso.cv)
+min(lasso.cv$cvm)
+```
+#Based on above results, best subset selection has the lowest mse and includes variables:V3,V6,V10,V14,V16.
+
+#Build Model
+```{r}
+glm_lm<-glm(Y~.,data = data) 
+glm_lm.cv<-cv.glm(data,glm_lm,K=10) 
+glm_lm.cv$delta[2]
+bestlm<-lm(Y~V3+V6+V10+V14+V15+V16,data=data) 
+glm_blm<-glm(bestlm,data = data) 
+glm_blm.cv<-cv.glm(data,glm_blm,K=10) 
+glm_blm.cv$delta[2]
+```
+#nonlinear effects
+```{r}
+data_melt3 <- cbind(melt(data[,c(3,6,10,14,16)]),resid=bestlm$residuals)
+data_melt3 <- cbind(melt(data),resid=bestlm$residuals)
+ggplot(data_melt3,aes(x=value,y=resid))+
+  geom_point()+geom_smooth(method="loess")+
+  facet_wrap(~variable,scales="free")
+```
+
+#Try poly transformation to V3, V6, V10 and V14 respectively
+```{r}
+#V3
+V3MSE <- rep(0,10) 
+for(i in 1:10){ 
+  templm <- glm(Y~V6+V10+V14+V16+poly(V3,i),data=data) 
+  tempCV <- cv.glm(data,templm,K = 10) 
+  V3MSE[i] <- tempCV$delta[1] 
+} 
+plot(V3MSE,xlab="V3")
+
+#V6
+V6MSE <- rep(0,10)
+for(i in 1:10){ 
+  templm <- glm(Y~V10+V14+V16+poly(V3,1)+poly(V6,i),data=data) 
+  tempCV <- cv.glm(data,templm,K = 10) 
+  V6MSE[i] <- tempCV$delta[1] 
+} 
+plot(V6MSE,xlab="V6")
+
+#V10
+V10MSE <- rep(0,10)
+for(i in 1:10){ 
+  templm <- glm(Y~V6+V14+V16+poly(V3,1)+poly(V10,i),data=data) 
+  tempCV <- cv.glm(data,templm,K = 10) 
+  V10MSE[i] <- tempCV$delta[1] 
+} 
+plot(V10MSE,xlab="V10")
+
+#V14
+V14MSE <- rep(0,10)
+for(i in 1:10){ 
+  templm <- glm(Y~V6+V16+poly(V3,1)+V10+poly(V14,i),data=data) 
+  tempCV <- cv.glm(data,templm,K = 10) 
+  V14MSE[i] <- tempCV$delta[1] 
+} 
+plot(V14MSE,xlab="V14")
+```
+#adjusted cross validation MSE
+```{r}
+#cv mse
+transformlm1<-lm(Y~V6+V16+poly(V3,1)+V10+poly(V14,4),data=data)
+glm_t<-glm(Y~V6+V16+poly(V3,1)+V10+poly(V14,4),data=data)
+cv.glm(data,glm_t,K=10)$delta[2]
+```
+#Splines
+```{r}
+library(mgcv)
+library(gamclass)
+splinelm <- gam(Y~s(V3)+V6+V10+s(V14)+V16,data=data)
+CVgam(formula(splinelm),data,nfold=10)
+splinelm.cv <- cv.glm(data,splinelm,K=10)
+splinelm.cv$delta[2]
+
+splinelm1 <- gam(Y~s(V3)+s(V6)+s(V10)+s(V14)+V16,data=data)
+CVgam(formula(splinelm1),data,nfold=10)
+splinelm.cv1 <- cv.glm(data,splinelm1,K=10)
+splinelm.cv1$delta[2]
+```
+#Final model has been chosen which has smallest cvMSE.
+```{r}
+#final model
+final <- lm(Y~V6+V16+poly(V3,1)+V10+poly(V14,4),data=data)
+summary(final)
+```
+
+#Residuals follow Gaussanity
+```{r}
+shapiro.test(final$residuals)
+```
+#The p-value of Shapiro test is pretty high, which means we fail to reject the hypothesis of normality. Thus the normality assumption is satisfied.
+#Independence
+```{r}
+durbinWatsonTest(final)
+```
+#The p-value of durbinWatsonTest is pretty high, which means we fail to reject the hypothesis of independence. Thus the independence assumption is satisfied. 
+#Nonlinear
+```{r}
+plot(final$residuals,final$fitted.values)
+```
+
+#Since there is no specific pattern for the residual plots, we can consider the model does not have any non-linear effects. The residual plot also reflects the independence assumption of the model, as we tested above. 
+
+#From the analysis of residuals of the model, we can say the model is valid and the adjusted R^2 of final model is 0.32, it means the model can explain about 32% of the variation in the dataset. The variables we picked in the model are statistically significant.
+
+#Prediction
+```{r}
+Xtest <- read.table("D:/GWU-STAT/6210 Data Analysis/Project1/Xtest.txt")
+Xtest$V15 <- as.factor(Xtest$V15)
+Xtest$V16 <- as.factor(Xtest$V16)
+Xtest$xpdt<-predict(final,newdata=Xtest) 
+head(Xtest)
+write.csv(Xtest,"predict.csv")
+```
+#If we can also know the topic of the show, it may help us predict the andience number more precisely. Also, since different topics can attract different kind of people, like maybe teenagers are more likely to see the comedy about love or campus life, they may not be that interested in the comedy about retired life of old people or some comedies about finance, more information about the age structure of the comedy is also helpful to predict the number of audience. Also, the show was shown in different day of a week can also cause difference number of audience. 
+#If more information about the above can be collected, maybe the prediction can be more precise. 
+
+
+
